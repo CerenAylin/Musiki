@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=400">
+  <title>Musiki</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+  <!-- ─── Header ────────────────────────────────────────────── -->
+  <header class="header">
+    <div class="header-left">
+      <svg class="header-logo" width="20" height="20" viewBox="0 0 20 20">
+        <circle cx="10" cy="10" r="8" fill="none" stroke="#1d1b1a" stroke-width="2"/>
+        <circle cx="10" cy="10" r="4" fill="#d4462e"/>
+        <line x1="10" y1="2" x2="10" y2="6" stroke="#1d1b1a" stroke-width="1.5"/>
+        <line x1="18" y1="10" x2="14" y2="10" stroke="#2660a4" stroke-width="1.5"/>
+      </svg>
+      <h1 class="header-title">MUSİKİ</h1>
+    </div>
+    <div class="header-right">
+      <div class="backend-status" id="backendStatus" title="Backend durumu">
+        <span class="status-dot"></span>
+      </div>
+      <button class="close-btn" id="closePopupBtn" title="Kapat">✕</button>
+    </div>
+  </header>
+
+  <!-- ─── Tabs ──────────────────────────────────────────────── -->
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="active">Aktif</button>
+    <button class="tab-btn" data-tab="library">Kütüphane</button>
+  </div>
+
+  <!-- ─── Active Tab Content ────────────────────────────────── -->
+  <div id="tabActive" class="tab-content active">
+    <!-- ─── Main Visualization Canvas ─────────────────────────── -->
+    <section class="viz-section">
+      <canvas id="vizCanvas" width="800" height="480"></canvas>
+      <div class="viz-overlay" id="vizOverlay">
+        <span class="viz-hint">Ayrıştırmak için aşağıdaki butona tıklayın</span>
+      </div>
+    </section>
+
+    <!-- ─── Channel Controls ──────────────────────────────────── -->
+    <section class="channels" id="channelControls">
+
+      <div class="channel-row" data-stem="vocals">
+        <canvas class="channel-icon" width="20" height="20" data-shape="vocals"></canvas>
+        <span class="channel-name">vokal</span>
+        <div class="slider-track">
+          <input type="range" class="volume-slider" min="0" max="100" value="100" data-stem="vocals">
+          <div class="slider-fill" data-stem="vocals"></div>
+        </div>
+        <button class="ctrl-btn mute-btn" data-stem="vocals" title="Sessiz">M</button>
+        <button class="ctrl-btn solo-btn" data-stem="vocals" title="Solo">S</button>
+        <button class="ctrl-btn download-btn" data-stem="vocals" title="İndir">↓</button>
+      </div>
+
+      <div class="channel-row" data-stem="drums">
+        <canvas class="channel-icon" width="20" height="20" data-shape="drums"></canvas>
+        <span class="channel-name">davul</span>
+        <div class="slider-track">
+          <input type="range" class="volume-slider" min="0" max="100" value="100" data-stem="drums">
+          <div class="slider-fill" data-stem="drums"></div>
+        </div>
+        <button class="ctrl-btn mute-btn" data-stem="drums" title="Sessiz">M</button>
+        <button class="ctrl-btn solo-btn" data-stem="drums" title="Solo">S</button>
+        <button class="ctrl-btn download-btn" data-stem="drums" title="İndir">↓</button>
+      </div>
+
+      <div class="channel-row" data-stem="bass">
+        <canvas class="channel-icon" width="20" height="20" data-shape="bass"></canvas>
+        <span class="channel-name">bas</span>
+        <div class="slider-track">
+          <input type="range" class="volume-slider" min="0" max="100" value="100" data-stem="bass">
+          <div class="slider-fill" data-stem="bass"></div>
+        </div>
+        <button class="ctrl-btn mute-btn" data-stem="bass" title="Sessiz">M</button>
+        <button class="ctrl-btn solo-btn" data-stem="bass" title="Solo">S</button>
+        <button class="ctrl-btn download-btn" data-stem="bass" title="İndir">↓</button>
+      </div>
+
+      <div class="channel-row" data-stem="other">
+        <canvas class="channel-icon" width="20" height="20" data-shape="other"></canvas>
+        <span class="channel-name">diğer</span>
+        <div class="slider-track">
+          <input type="range" class="volume-slider" min="0" max="100" value="100" data-stem="other">
+          <div class="slider-fill" data-stem="other"></div>
+        </div>
+        <button class="ctrl-btn mute-btn" data-stem="other" title="Sessiz">M</button>
+        <button class="ctrl-btn solo-btn" data-stem="other" title="Solo">S</button>
+        <button class="ctrl-btn download-btn" data-stem="other" title="İndir">↓</button>
+      </div>
+
+    <!-- ─── Player Bar ────────────────────────────────────────── -->
+    <section class="player-bar" id="playerBar">
+      <div class="player-controls">
+        <button class="icon-btn" id="skipBackBtn" title="10s Geri">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>
+        </button>
+        <button class="icon-btn" id="playPauseBtn" title="Oynat/Duraklat">
+          <!-- Play icon (default) -->
+          <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button class="icon-btn" id="skipFwdBtn" title="10s İleri">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>
+        </button>
+      </div>
+
+      <span class="time" id="currentTime">0:00</span>
+      <div class="progress-track" id="progressTrack">
+        <div class="progress-segment progress-vocals" id="progVocals"></div>
+        <div class="progress-segment progress-drums" id="progDrums"></div>
+        <div class="progress-segment progress-bass" id="progBass"></div>
+        <div class="progress-segment progress-other" id="progOther"></div>
+        <div class="progress-knob" id="progressKnob"></div>
+      </div>
+      <span class="time" id="duration">0:00</span>
+      
+      <div class="master-volume">
+        <svg viewBox="0 0 24 24" width="16" height="16" style="color: var(--ink-light);"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+        <input type="range" id="masterVolumeSlider" min="0" max="100" value="100" class="volume-slider">
+      </div>
+    </section>
+
+    <!-- ─── Bottom Panel: Legend + Action ──────────────────────── -->
+    <section class="bottom-panel">
+
+      <div class="legend">
+        <div class="legend-item">
+          <span class="legend-dot legend-vocals"></span>
+          <span>vokal</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot legend-drums"></span>
+          <span>davul</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot legend-bass"></span>
+          <span>bas</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot legend-other"></span>
+          <span>diğer</span>
+        </div>
+      </div>
+
+      <div class="action-panel">
+        <button class="separate-btn" id="separateBtn">
+          <span class="btn-text">Ayrıştır</span>
+          <span class="btn-icon">◎</span>
+        </button>
+        <button class="separate-btn cancel-btn hidden" id="cancelBtn">
+          <span class="btn-text">Durdur</span>
+          <span class="btn-icon">✕</span>
+        </button>
+        <button class="separate-btn cancel-btn hidden" id="deleteCacheBtn" style="margin-top: 5px; background: #d4462e;">
+          <span class="btn-text">Kütüphaneden Sil</span>
+          <span class="btn-icon">🗑</span>
+        </button>
+        <div class="loading-indicator" id="loadingIndicator">
+          <div class="loading-circle lc-1"></div>
+          <div class="loading-circle lc-2"></div>
+          <div class="loading-circle lc-3"></div>
+        </div>
+        <span class="status-text" id="statusText"></span>
+      </div>
+
+    </section>
+
+    <!-- ─── Song Title Marquee ─────────────────────────────────── -->
+    <div class="title-bar" id="titleBar">
+      <span class="title-text" id="titleText">YouTube'da bir video açın</span>
+    </div>
+  </div>
+
+  <!-- ─── Library Tab Content ────────────────────────────────── -->
+  <div id="tabLibrary" class="tab-content">
+    <div class="library-header">
+      <h2>Veritabanı</h2>
+      <button class="refresh-btn" id="refreshLibraryBtn">↻</button>
+    </div>
+    <div class="library-list" id="libraryList">
+      <!-- JS tarafından doldurulacak -->
+    </div>
+  </div>
+
+  <!-- ─── Modals ─────────────────────────────────────────────── -->
+  <!-- Kayıt Onay Modalı Kaldırıldı -->
+
+  <script src="visualizer.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

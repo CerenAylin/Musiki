@@ -1,0 +1,27 @@
+# Python / Backend
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Sanal Ortam (Virtual Environment)
+venv/
+env/
+ENV/
+.venv/
+
+# Proje Dosyalari (Otomatik Olusanlar)
+backend/data/
+backend/downloads/
+backend/stems/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Log Dosyalari
+*.log

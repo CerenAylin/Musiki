@@ -1,0 +1,13 @@
+--extra-index-url https://download.pytorch.org/whl/cu124
+
+fastapi==0.115.6
+pydantic==2.10.4
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+yt-dlp==2025.1.26
+demucs==4.0.1
+torch==2.6.0+cu124
+torchaudio==2.6.0+cu124
+soundfile==0.13.0
+aiosqlite==0.21.0
+rich==13.9.4
