@@ -186,6 +186,7 @@
         currentVideoId = msg.videoId;
         stemsReady = false;
         resetUI();
+        checkExistingState();
         break;
 
       case 'error':
@@ -496,8 +497,8 @@
     separateBtn.classList.remove('hidden', 'processing');
     separateBtn.classList.add('completed');
     separateBtn.disabled = false;
-    if (deleteCacheBtn) deleteCacheBtn.classList.remove('hidden');
-    btnText.textContent = 'Kütüphaneye kaydedildi';
+    if (deleteCacheBtn) deleteCacheBtn.classList.add('hidden');
+    btnText.textContent = 'Yeniden Ayrıştır';
     vizOverlay.classList.add('hidden');
     setStatus('', 'ready');
 
@@ -730,13 +731,44 @@
         delBtn.textContent = 'Sil';
         delBtn.onclick = async () => {
           try {
-            await fetch(`${BACKEND_URL}/api/cache/${item.video_id}`, { method: 'DELETE' });
-            loadLibrary();
+            if (item.video_id === currentVideoId) {
+                resetUI();
+                
+                await new Promise(resolve => {
+                    chrome.tabs.sendMessage(currentTabId, { action: 'restoreYTAudio' }, () => {
+                        if (chrome.runtime.lastError) { /* ignore */ }
+                        resolve();
+                    });
+                    setTimeout(resolve, 1000);
+                });
+                
+                setTimeout(async () => {
+                    try {
+                        await fetch(`${BACKEND_URL}/api/cache/${item.video_id}`, { method: 'DELETE' });
+                        loadLibrary();
+                    } catch(e) {}
+                }, 300);
+            } else {
+                await fetch(`${BACKEND_URL}/api/cache/${item.video_id}`, { method: 'DELETE' });
+                loadLibrary();
+            }
+          } catch (e) { console.error(e); }
+        };
+
+        const folderBtn = document.createElement('button');
+        folderBtn.className = 'library-play-btn';
+        folderBtn.style.background = '#2660a4';
+        folderBtn.style.marginLeft = '4px';
+        folderBtn.textContent = 'Klasör';
+        folderBtn.onclick = async () => {
+          try {
+            await fetch(`${BACKEND_URL}/api/open_folder/${item.video_id}`, { method: 'POST' });
           } catch (e) { console.error(e); }
         };
         
         div.appendChild(title);
         div.appendChild(btn);
+        div.appendChild(folderBtn);
         div.appendChild(delBtn);
         libraryList.appendChild(div);
       });

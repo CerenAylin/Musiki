@@ -35,7 +35,7 @@ class AudioDownloader:
             "socket_timeout": 30,
             "retries": 3,
             "extractor_args": {
-                "youtube": ["player_client=default,-android_sdkless"]
+                "youtube": ["player_client=tv,mweb"]
             },
             # Hız optimizasyonları
             "concurrent_fragment_downloads": 4,

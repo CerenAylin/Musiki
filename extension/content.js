@@ -422,15 +422,27 @@
   }
 
   // ─── SPA Navigation Detection ─────────────────────────────────
-  document.addEventListener('yt-navigate-finish', function () {
+  function handleUrlChange() {
     const newVideoId = getVideoId();
-    if (newVideoId !== currentVideoId) {
+    if (newVideoId && newVideoId !== currentVideoId) {
       console.log(`[Musiki Content] 🔄 Video değişti: ${currentVideoId} → ${newVideoId}`);
       currentVideoId = newVideoId;
       cleanup();
       sendToPopup({ action: 'videoChanged', videoId: newVideoId });
     }
-  });
+  }
+
+  document.addEventListener('yt-navigate-finish', handleUrlChange);
+  document.addEventListener('yt-page-data-updated', handleUrlChange);
+
+  let lastUrl = location.href;
+  new MutationObserver(() => {
+    const url = location.href;
+    if (url !== lastUrl) {
+      lastUrl = url;
+      handleUrlChange();
+    }
+  }).observe(document, { subtree: true, childList: true });
 
   // ─── Initialize ───────────────────────────────────────────────
   injectBridge();

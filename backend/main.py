@@ -250,9 +250,15 @@ async def download_stem(video_id: str, stem_name: str):
     if not stem_path.exists():
         raise HTTPException(status_code=404, detail="Stem dosyası bulunamadı")
 
+    # Dosya ismini başlıkla kaydet (Güvenli isim oluştur)
+    cached = await db.get_cached(video_id)
+    title = cached["title"] if cached and cached.get("title") else video_id
+    import re
+    safe_title = re.sub(r'[\\/*?:"<>|]', "", title)
+
     return FileResponse(
         path=str(stem_path),
-        filename=f"{video_id}_{stem_name}.wav",
+        filename=f"{safe_title} - {stem_name}.wav",
         media_type="audio/wav",
     )
 
@@ -277,6 +283,25 @@ async def delete_cache(video_id: str):
     processing_status.pop(video_id, None)
 
     return {"status": "deleted", "video_id": video_id}
+
+
+@app.post("/api/open_folder/{video_id}")
+async def open_folder(video_id: str):
+    """Local sistemde stems klasörünü açar."""
+    stems_path = Path(STEMS_DIR) / video_id
+    if not stems_path.exists():
+        raise HTTPException(status_code=404, detail="Klasör bulunamadı")
+    
+    if sys.platform == 'win32':
+        os.startfile(str(stems_path))
+    elif sys.platform == 'darwin':
+        import subprocess
+        subprocess.call(['open', str(stems_path)])
+    else:
+        import subprocess
+        subprocess.call(['xdg-open', str(stems_path)])
+        
+    return {"status": "opened"}
 
 
 @app.post("/api/cancel/{video_id}")
