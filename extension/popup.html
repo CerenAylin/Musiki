@@ -96,6 +96,20 @@
         <button class="ctrl-btn solo-btn" data-stem="other" title="Solo">S</button>
         <button class="ctrl-btn download-btn" data-stem="other" title="İndir">↓</button>
       </div>
+    </section>
+
+    <!-- ─── Transpose Control ────────────────────────────────────── -->
+    <section class="transpose-section">
+      <div class="transpose-control">
+        <span class="transpose-label">TRANSPOZE</span>
+        <div class="transpose-buttons">
+          <button class="transpose-btn" id="transposeDown" title="Yarım ton aşağı">−</button>
+          <span class="transpose-value" id="transposeValue">0</span>
+          <button class="transpose-btn" id="transposeUp" title="Yarım ton yukarı">+</button>
+        </div>
+        <button class="transpose-reset" id="transposeReset" title="Sıfırla">↺</button>
+      </div>
+    </section>
 
     <!-- ─── Player Bar ────────────────────────────────────────── -->
     <section class="player-bar" id="playerBar">
@@ -159,9 +173,17 @@
           <span class="btn-text">Durdur</span>
           <span class="btn-icon">✕</span>
         </button>
+        <button class="separate-btn toggle-stems-btn hidden" id="toggleStemsBtn">
+          <span class="btn-text">Orijinal Sese Dön</span>
+          <span class="btn-icon">🔄</span>
+        </button>
         <button class="separate-btn cancel-btn hidden" id="deleteCacheBtn" style="margin-top: 5px; background: #d4462e;">
           <span class="btn-text">Kütüphaneden Sil</span>
           <span class="btn-icon">🗑</span>
+        </button>
+        <button class="separate-btn hidden" id="syncBtn" style="margin-top: 5px; background: #2660a4;">
+          <span class="btn-text">Sesleri Eşitle (Senkronize Et)</span>
+          <span class="btn-icon">⏱</span>
         </button>
         <div class="loading-indicator" id="loadingIndicator">
           <div class="loading-circle lc-1"></div>

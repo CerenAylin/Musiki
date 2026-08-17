@@ -688,6 +688,25 @@ body {
   background: var(--ink) !important;
   color: var(--canvas) !important;
 }
+
+/* ─── Toggle Stems Button ────────────────────────────────────────── */
+.toggle-stems-btn {
+  background: var(--blue) !important;
+  color: var(--canvas) !important;
+  margin-top: 5px;
+}
+.toggle-stems-btn:hover {
+  background: var(--ink) !important;
+  color: var(--canvas) !important;
+}
+.toggle-stems-btn.deactivated {
+  background: var(--green) !important;
+  color: var(--canvas) !important;
+}
+.toggle-stems-btn.deactivated:hover {
+  background: var(--ink) !important;
+}
+
 .hidden { display: none !important; }
 
 /* ─── Modals ─────────────────────────────────────────────────────── */
@@ -738,3 +757,104 @@ body {
 .modal-btn.primary { background: var(--green); color: var(--canvas); }
 .modal-btn.secondary { background: var(--red); color: var(--canvas); }
 .modal-btn:hover { background: var(--ink); color: var(--canvas); }
+
+/* ─── Transpose Control ─────────────────────────────────────────── */
+.transpose-section {
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--ink-faint);
+  flex-shrink: 0;
+}
+
+.transpose-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.transpose-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--ink-light);
+  width: 64px;
+  flex-shrink: 0;
+}
+
+.transpose-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border: 1.5px solid var(--ink);
+  background: var(--canvas);
+}
+
+.transpose-btn {
+  width: 24px;
+  height: 22px;
+  background: var(--canvas);
+  border: none;
+  border-right: 1px solid var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.1s;
+  line-height: 1;
+  padding: 0;
+}
+
+.transpose-btn:last-child {
+  border-right: none;
+}
+
+.transpose-btn:hover {
+  background: var(--ink);
+  color: var(--canvas);
+}
+
+.transpose-btn:active {
+  background: var(--blue);
+  color: var(--canvas);
+}
+
+.transpose-value {
+  min-width: 30px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink);
+  padding: 0 2px;
+  user-select: none;
+}
+
+.transpose-value.shifted {
+  color: var(--blue);
+}
+
+.transpose-reset {
+  width: 22px;
+  height: 22px;
+  background: var(--canvas);
+  border: 1.5px solid var(--ink);
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.1s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.transpose-reset:hover {
+  background: var(--red);
+  color: var(--canvas);
+  border-color: var(--red);
+}

@@ -5,6 +5,7 @@
  * - 4 adet <audio> elementi yönetir (stems)
  * - YouTube player ile senkronizasyon sağlar
  * - Web Audio API ile frekans analizi yapar
+ * - AudioWorklet ile gerçek zamanlı pitch shifting (transpoze)
  * - Popup ile port bağlantısı üzerinden haberleşir
  */
 (function () {
@@ -13,17 +14,17 @@
   // ─── State ──────────────────────────────────────────────────────
   const STEM_NAMES = ['vocals', 'drums', 'bass', 'other'];
   const BACKEND_URL = 'http://localhost:8765';
-  const SYNC_THRESHOLD = 0.15; // saniye — bu eşikten fazla kayma varsa düzelt
 
   let audioElements = {};    // { vocals: Audio, drums: Audio, ... }
   let audioContext = null;
   let analysers = {};        // { vocals: AnalyserNode, ... }
   let gainNodes = {};        // { vocals: GainNode, ... }
+  let pitchNodes = {};       // { vocals: AudioWorkletNode, ... }
+  let pitchShifterReady = false;
   let isLoaded = false;
   let isSyncing = false;
   let syncRAF = null;
   let popupPort = null;
-  let vizInterval = null;
 
   let ytState = {
     currentTime: 0,
@@ -38,9 +39,9 @@
   let volumes = { vocals: 1.0, drums: 1.0, bass: 1.0, other: 1.0 };
   let muted = { vocals: false, drums: false, bass: false, other: false };
   let soloChannel = null;
-
-  // Master volume (YouTube orijinal ses seviyesi)
   let masterVolume = 100;
+  let currentSemitones = 0;
+  let stemsActive = true;
 
   // Video ID takibi (SPA navigasyon desteği)
   let currentVideoId = getVideoId();
@@ -66,7 +67,7 @@
     ytState = event.data.payload;
     lastYtTimeUpdate = performance.now();
 
-    // Popup'a her zaman güncelle (stems yüklenmemişken de)
+    // Popup'a her zaman güncelle
     if (popupPort) {
       try {
         popupPort.postMessage({
@@ -76,6 +77,8 @@
           muted,
           soloChannel,
           videoId: currentVideoId,
+          transpose: currentSemitones,
+          stemsActive,
           playerState: {
             currentTime: ytState.currentTime,
             duration: ytState.duration,
@@ -89,7 +92,7 @@
   });
 
   // ─── Audio Management ──────────────────────────────────────────
-  function loadStems(stemsUrls) {
+  async function loadStems(stemsUrls) {
     console.log('[Musiki Content] Stem\'ler yükleniyor...', stemsUrls);
 
     // Önceki audio'ları temizle
@@ -97,6 +100,17 @@
 
     // AudioContext oluştur
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+    // Pitch shifter worklet'i yükle
+    try {
+      const workletUrl = chrome.runtime.getURL('pitch-shifter-worklet.js');
+      await audioContext.audioWorklet.addModule(workletUrl);
+      pitchShifterReady = true;
+      console.log('[Musiki Content] 🎵 PitchShifter worklet yüklendi');
+    } catch (e) {
+      console.warn('[Musiki Content] PitchShifter worklet yüklenemedi, transpoze devre dışı:', e);
+      pitchShifterReady = false;
+    }
 
     const loadPromises = [];
 
@@ -113,13 +127,34 @@
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.7;
 
-      source.connect(gain);
-      gain.connect(analyser);
-      analyser.connect(audioContext.destination);
-
       gainNodes[name] = gain;
       analysers[name] = analyser;
       audioElements[name] = audio;
+
+      // Audio zinciri: source → gain → [pitchShifter →] analyser → destination
+      source.connect(gain);
+
+      if (pitchShifterReady) {
+        try {
+          const pitchNode = new AudioWorkletNode(audioContext, 'pitch-shifter');
+          pitchNodes[name] = pitchNode;
+
+          // Mevcut transpoze değerini uygula
+          if (currentSemitones !== 0) {
+            pitchNode.port.postMessage({ semitones: currentSemitones });
+          }
+
+          gain.connect(pitchNode);
+          pitchNode.connect(analyser);
+        } catch (e) {
+          console.warn(`[Musiki Content] ${name} için pitchShifter oluşturulamadı:`, e);
+          gain.connect(analyser);
+        }
+      } else {
+        gain.connect(analyser);
+      }
+
+      analyser.connect(audioContext.destination);
 
       // Yüklenme promise'i
       loadPromises.push(new Promise((resolve, reject) => {
@@ -135,6 +170,7 @@
     Promise.all(loadPromises)
       .then(() => {
         isLoaded = true;
+        stemsActive = true;
         console.log('[Musiki Content] ✅ Tüm stem\'ler yüklendi!');
 
         // YouTube sesini kapat
@@ -188,7 +224,7 @@
         }
 
         // Play/Pause senkronizasyonu
-        if (ytPlaying) {
+        if (stemsActive && ytPlaying) {
           if (audio.paused) {
             audio.play().catch(() => { });
           }
@@ -233,8 +269,6 @@
       const dataArray = new Uint8Array(bufferLength);
       analyser.getByteFrequencyData(dataArray);
 
-      // Frekans verilerini düşük çözünürlükte gönder (hız için)
-      // 128 bin → 16 bin'e indir
       const reduced = [];
       const step = Math.floor(bufferLength / 16);
       for (let i = 0; i < 16; i++) {
@@ -259,7 +293,6 @@
         }
       });
     } catch (e) {
-      // Port kapanmış olabilir
       popupPort = null;
     }
   }
@@ -277,14 +310,12 @@
       audioContext.resume().catch(()=> { });
     }
 
-    let effectiveVolume = volumes[name];
+    let effectiveVolume = volumes[name] * (masterVolume / 100);
 
-    // Mute kontrolü
     if (muted[name]) {
       effectiveVolume = 0;
     }
 
-    // Solo kontrolü — solo aktifse, sadece solo kanal duyulur
     if (soloChannel && soloChannel !== name) {
       effectiveVolume = 0;
     }
@@ -305,12 +336,24 @@
 
   function toggleSolo(name) {
     if (soloChannel === name) {
-      soloChannel = null; // Solo'yu kapat
+      soloChannel = null;
     } else {
-      soloChannel = name; // Bu kanalı solo yap
+      soloChannel = name;
     }
     applyAllVolumes();
     return soloChannel;
+  }
+
+  // ─── Transpose Control ────────────────────────────────────────
+  function setTranspose(semitones) {
+    currentSemitones = semitones;
+    console.log(`[Musiki Content] 🎵 Transpoze: ${semitones > 0 ? '+' : ''}${semitones} yarım ton`);
+
+    STEM_NAMES.forEach(name => {
+      if (pitchNodes[name]) {
+        pitchNodes[name].port.postMessage({ semitones });
+      }
+    });
   }
 
   // ─── Communication with Popup ──────────────────────────────────
@@ -328,6 +371,8 @@
       muted,
       soloChannel,
       videoId: currentVideoId,
+      transpose: currentSemitones,
+      stemsActive,
       playerState: {
         currentTime: ytState.currentTime,
         duration: ytState.duration,
@@ -341,17 +386,19 @@
           setVolume(msg.stem, msg.value);
           break;
 
-        case 'toggleMute':
+        case 'toggleMute': {
           const isMuted = toggleMute(msg.stem);
           port.postMessage({ action: 'muteState', stem: msg.stem, muted: isMuted, soloChannel });
           break;
+        }
 
-        case 'toggleSolo':
+        case 'toggleSolo': {
           const solo = toggleSolo(msg.stem);
           port.postMessage({ action: 'soloState', soloChannel: solo, muted });
           break;
+        }
 
-        case 'seek':
+        case 'seek': {
           const time = ytState.duration * msg.percent;
           window.postMessage({ type: 'MUSIKI_COMMAND', action: 'seek', value: time }, '*');
           // Stem'leri de aynı zamana ayarla
@@ -361,6 +408,7 @@
             }
           });
           break;
+        }
 
         case 'play':
           window.postMessage({ type: 'MUSIKI_COMMAND', action: 'play' }, '*');
@@ -372,23 +420,41 @@
 
         case 'setMasterVolume':
           masterVolume = msg.value;
-          // Tüm stem'lerin sesini oranla ayarla
+          applyAllVolumes();
+          break;
+
+        case 'setTranspose':
+          setTranspose(msg.value);
+          break;
+
+        case 'syncNow':
+          console.log(`[Musiki Content] ⏱ Manuel senkronizasyon: ${ytState.currentTime}s`);
           STEM_NAMES.forEach(name => {
-            const gain = gainNodes[name];
-            if (!gain || !audioContext) return;
-
-            let effectiveVolume = volumes[name] * (masterVolume / 100);
-            if (muted[name]) effectiveVolume = 0;
-            if (soloChannel && soloChannel !== name) effectiveVolume = 0;
-
-            gain.gain.setTargetAtTime(effectiveVolume, audioContext.currentTime, 0.02);
+            if (audioElements[name]) {
+              // Küçük bir fark olsa bile kesin olarak eşitle
+              audioElements[name].currentTime = ytState.currentTime;
+            }
           });
           break;
 
+        case 'toggleStems':
+          stemsActive = !stemsActive;
+          if (stemsActive) {
+            window.postMessage({ type: 'MUSIKI_COMMAND', action: 'mute' }, '*');
+          } else {
+            window.postMessage({ type: 'MUSIKI_COMMAND', action: 'unmute' }, '*');
+            // Anında durdur
+            STEM_NAMES.forEach(name => {
+              if (audioElements[name] && !audioElements[name].paused) {
+                audioElements[name].pause();
+              }
+            });
+          }
+          port.postMessage({ action: 'stemsActiveState', stemsActive });
+          break;
+
         case 'getState':
-          // Inject.js'ten de en son durumu iste
           window.postMessage({ type: 'MUSIKI_COMMAND', action: 'getState' }, '*');
-          // Mevcut bilinen durumu hemen gönder
           port.postMessage({
             action: 'stateSync',
             isLoaded,
@@ -396,6 +462,8 @@
             muted,
             soloChannel,
             videoId: currentVideoId,
+            transpose: currentSemitones,
+            stemsActive,
             playerState: {
               currentTime: ytState.currentTime,
               duration: ytState.duration,
@@ -429,7 +497,6 @@
         break;
 
       case 'restoreYTAudio':
-        // Orijinal YouTube sesini geri aç
         window.postMessage({ type: 'MUSIKI_COMMAND', action: 'unmute' }, '*');
         cleanup();
         sendResponse({ status: 'restored' });
@@ -459,6 +526,10 @@
         audioElements[name].src = '';
         audioElements[name].remove?.();
       }
+      // Pitch node'ları temizle
+      if (pitchNodes[name]) {
+        try { pitchNodes[name].disconnect(); } catch(e) {}
+      }
     });
 
     if (audioContext && audioContext.state !== 'closed') {
@@ -469,7 +540,10 @@
     audioContext = null;
     analysers = {};
     gainNodes = {};
+    pitchNodes = {};
+    pitchShifterReady = false;
     isLoaded = false;
+    stemsActive = true;
   }
 
   // ─── Utility ───────────────────────────────────────────────────

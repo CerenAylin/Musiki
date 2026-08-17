@@ -37,6 +37,14 @@
   
   const closePopupBtn = document.getElementById('closePopupBtn');
   const deleteCacheBtn = document.getElementById('deleteCacheBtn');
+  const toggleStemsBtn = document.getElementById('toggleStemsBtn');
+  const syncBtn = document.getElementById('syncBtn');
+
+  // Transpose controls
+  const transposeUp = document.getElementById('transposeUp');
+  const transposeDown = document.getElementById('transposeDown');
+  const transposeReset = document.getElementById('transposeReset');
+  const transposeValueEl = document.getElementById('transposeValue');
 
   // ─── State ─────────────────────────────────────────────────
   let currentTabId = null;
@@ -50,6 +58,8 @@
   let volumes = { vocals: 100, drums: 100, bass: 100, other: 100 };
   let muted = { vocals: false, drums: false, bass: false, other: false };
   let soloChannel = null;
+  let currentTranspose = 0;
+  let stemsActive = true;
 
   // ─── Initialize ────────────────────────────────────────────
   async function init() {
@@ -162,6 +172,15 @@
         if (msg.playerState) {
           updatePlayerBar(msg.playerState);
         }
+        // Transpose durumunu senkronize et
+        if (msg.transpose !== undefined && msg.transpose !== currentTranspose) {
+          currentTranspose = msg.transpose;
+          updateTransposeUI();
+        }
+        // Stems aktif durumunu senkronize et
+        if (msg.stemsActive !== undefined) {
+          updateStemsActiveUI(msg.stemsActive);
+        }
         // Content script'te stems yüklüyse, popup'ta da hazır göster
         if (msg.isLoaded && !stemsReady) {
           onStemsReady();
@@ -196,13 +215,18 @@
 
       case 'videoChanged':
         currentVideoId = msg.videoId;
+        isProcessing = false;
         stemsReady = false;
-        resetUI();
-        checkExistingState();
+        stemsActive = true;
+        updateUI();
         break;
 
       case 'error':
-        setStatus(msg.error, 'error');
+        showError(msg.error);
+        break;
+
+      case 'stemsActiveState':
+        updateStemsActiveUI(msg.stemsActive);
         break;
     }
   }
@@ -254,8 +278,32 @@
     // Ayrıştır butonu
     separateBtn.addEventListener('click', handleSeparate);
     
-    // Durdur butonu
-    cancelBtn.addEventListener('click', handleCancel);
+    if (deleteCacheBtn) {
+      deleteCacheBtn.addEventListener('click', deleteCache);
+    }
+
+    if (toggleStemsBtn) {
+      toggleStemsBtn.addEventListener('click', () => {
+        if (!contentPort) return;
+        contentPort.postMessage({ action: 'toggleStems' });
+      });
+    }
+
+    if (syncBtn) {
+      syncBtn.addEventListener('click', () => {
+        if (!contentPort) return;
+        contentPort.postMessage({ action: 'syncNow' });
+      });
+    }
+
+    // Modal
+    // Modal (Kaldırıldı)
+    const modalCancel = document.getElementById('modalCancel');
+    if (modalCancel) {
+      modalCancel.addEventListener('click', () => {
+        document.getElementById('saveModal').classList.add('hidden');
+      });
+    }
 
     // Sekmeler
     tabBtns.forEach(btn => {
@@ -274,17 +322,6 @@
     // Kapatma butonu
     if (closePopupBtn) {
       closePopupBtn.addEventListener('click', () => window.close());
-    }
-
-    // Ana ekrandaki silme butonu
-    if (deleteCacheBtn) {
-      deleteCacheBtn.addEventListener('click', async () => {
-        if (!currentVideoId) return;
-        try {
-          await fetch(`${BACKEND_URL}/api/cache/${currentVideoId}`, { method: 'DELETE' });
-          resetUI();
-        } catch (e) { console.error(e); }
-      });
     }
 
     // Oynatma Çubuğu Seek
@@ -331,6 +368,30 @@
       masterVolumeSlider.addEventListener('input', (e) => {
         if (!contentPort) return;
         contentPort.postMessage({ action: 'setMasterVolume', value: parseInt(e.target.value) });
+      });
+    }
+
+    // ─── Transpose Controls ──────────────────────────────────
+    if (transposeUp) {
+      transposeUp.addEventListener('click', () => {
+        if (currentTranspose < 12) {
+          currentTranspose++;
+          updateTranspose();
+        }
+      });
+    }
+    if (transposeDown) {
+      transposeDown.addEventListener('click', () => {
+        if (currentTranspose > -12) {
+          currentTranspose--;
+          updateTranspose();
+        }
+      });
+    }
+    if (transposeReset) {
+      transposeReset.addEventListener('click', () => {
+        currentTranspose = 0;
+        updateTranspose();
       });
     }
 
@@ -440,6 +501,30 @@
     resetUI();
   }
 
+  async function deleteCache() {
+    if (!currentVideoId) return;
+    try {
+      resetUI();
+      
+      await new Promise(resolve => {
+        chrome.tabs.sendMessage(currentTabId, { action: 'restoreYTAudio' }, () => {
+            if (chrome.runtime.lastError) { /* ignore */ }
+            resolve();
+        });
+        setTimeout(resolve, 1000);
+      });
+      
+      setTimeout(async () => {
+          try {
+              await fetch(`${BACKEND_URL}/api/cache/${currentVideoId}`, { method: 'DELETE' });
+              loadLibrary();
+          } catch(e) {}
+      }, 300);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   // ─── Status Polling ────────────────────────────────────────
   let pollInterval = null;
 
@@ -513,20 +598,36 @@
   }
 
   function onStemsReady() {
-    isProcessing = false;
     stemsReady = true;
-    cancelBtn.classList.add('hidden');
-    separateBtn.classList.remove('hidden', 'processing');
-    separateBtn.classList.add('completed');
-    separateBtn.disabled = false;
-    if (deleteCacheBtn) deleteCacheBtn.classList.add('hidden');
-    btnText.textContent = 'Yeniden Ayrıştır';
-    vizOverlay.classList.add('hidden');
-    setStatus('', 'ready');
+    stemsActive = true;
+    updateUI();
+  }
 
-    // Canlı animasyona geç
-    stopAnimation();
-    startLiveAnimation();
+  function updateUI() {
+    if (stemsReady) {
+      separateBtn.classList.add('hidden');
+      cancelBtn.classList.add('hidden');
+      toggleStemsBtn.classList.remove('hidden');
+      deleteCacheBtn.classList.remove('hidden');
+      syncBtn.classList.remove('hidden');
+      btnText.textContent = 'Yeniden Ayrıştır';
+      vizOverlay.classList.add('hidden');
+      setStatus('', 'ready');
+      stopAnimation();
+      startLiveAnimation();
+      updateStemsActiveUI(stemsActive);
+    } else {
+      // Başlangıç durumu
+      separateBtn.classList.remove('hidden');
+      cancelBtn.classList.add('hidden');
+      toggleStemsBtn.classList.add('hidden');
+      deleteCacheBtn.classList.add('hidden');
+      syncBtn.classList.add('hidden');
+      separateBtn.disabled = false;
+      separateBtn.classList.remove('processing');
+      loadingIndicator.classList.remove('active');
+      statusText.textContent = '';
+    }
   }
 
   function resetUI() {
@@ -610,6 +711,25 @@
           el.style.width = isActive ? `${pct}%` : '0%';
         }
       });
+    }
+  }
+
+  // ─── Transpose Functions ──────────────────────────────────
+  function updateTranspose() {
+    updateTransposeUI();
+    if (contentPort) {
+      contentPort.postMessage({ action: 'setTranspose', value: currentTranspose });
+    }
+  }
+
+  function updateTransposeUI() {
+    if (transposeValueEl) {
+      if (currentTranspose > 0) {
+        transposeValueEl.textContent = `+${currentTranspose}`;
+      } else {
+        transposeValueEl.textContent = `${currentTranspose}`;
+      }
+      transposeValueEl.classList.toggle('shifted', currentTranspose !== 0);
     }
   }
 
@@ -716,6 +836,25 @@
         iconConfigs[shape](ctx);
       }
     });
+  }
+
+  // ─── Toggle Stems UI ───────────────────────────────────────
+  function updateStemsActiveUI(isActive) {
+    stemsActive = isActive;
+    if (!toggleStemsBtn) return;
+    
+    const textEl = toggleStemsBtn.querySelector('.btn-text');
+    const iconEl = toggleStemsBtn.querySelector('.btn-icon');
+    
+    if (isActive) {
+      toggleStemsBtn.classList.remove('deactivated');
+      textEl.textContent = 'Orijinal Sese Dön';
+      iconEl.textContent = '🔄';
+    } else {
+      toggleStemsBtn.classList.add('deactivated');
+      textEl.textContent = 'Eklenti Sesine Dön';
+      iconEl.textContent = '🎵';
+    }
   }
 
   // ─── Library ───────────────────────────────────────────────

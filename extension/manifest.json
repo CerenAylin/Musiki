@@ -38,7 +38,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "inject.js"
+        "inject.js",
+        "pitch-shifter-worklet.js"
       ],
       "matches": [
         "*://*.youtube.com/*"

@@ -116,61 +116,44 @@
   }
 
   /**
-   * Video oynatma — birden fazla yöntem dene
+   * Video oynatma — öncelik sırasıyla dene, ilk başarılı olan yeter
    */
   function doPlay() {
     console.log('[Musiki] ▶ Play komutu alındı');
-    
-    // Yöntem 1: Doğrudan <video> elementi (en güvenilir)
+
+    // Öncelik 1: YouTube Player API (en temiz — YouTube'un kendi state'ini günceller)
+    if (player && typeof player.playVideo === 'function') {
+      try {
+        player.playVideo();
+        return; // Başarılı, diğer yöntemlere gerek yok
+      } catch (e) {}
+    }
+
+    // Öncelik 2: Doğrudan <video> elementi
     const vid = findVideo();
     if (vid && vid.paused) {
       vid.play().catch(() => {});
     }
-
-    // Yöntem 2: YouTube Player API
-    if (player && typeof player.playVideo === 'function') {
-      try {
-        player.playVideo();
-      } catch (e) {}
-    }
-
-    // Yöntem 3: YouTube play butonu simülasyonu
-    const playBtn = document.querySelector('.ytp-play-button');
-    if (playBtn) {
-      const ariaLabel = playBtn.getAttribute('aria-label') || '';
-      // Sadece "Oynat" veya "Play" durumunda tıkla
-      if (ariaLabel.toLowerCase().includes('oynat') || ariaLabel.toLowerCase().includes('play')) {
-        playBtn.click();
-      }
-    }
   }
 
   /**
-   * Video duraklatma — birden fazla yöntem dene
+   * Video duraklatma — öncelik sırasıyla dene, ilk başarılı olan yeter
    */
   function doPause() {
     console.log('[Musiki] ⏸ Pause komutu alındı');
 
-    // Yöntem 1: Doğrudan <video> elementi
-    const vid = findVideo();
-    if (vid && !vid.paused) {
-      vid.pause();
-    }
-
-    // Yöntem 2: YouTube Player API
+    // Öncelik 1: YouTube Player API
     if (player && typeof player.pauseVideo === 'function') {
       try {
         player.pauseVideo();
+        return; // Başarılı, diğer yöntemlere gerek yok
       } catch (e) {}
     }
 
-    // Yöntem 3: YouTube pause butonu simülasyonu
-    const playBtn = document.querySelector('.ytp-play-button');
-    if (playBtn) {
-      const ariaLabel = playBtn.getAttribute('aria-label') || '';
-      if (ariaLabel.toLowerCase().includes('duraklat') || ariaLabel.toLowerCase().includes('pause')) {
-        playBtn.click();
-      }
+    // Öncelik 2: Doğrudan <video> elementi
+    const vid = findVideo();
+    if (vid && !vid.paused) {
+      vid.pause();
     }
   }
 
