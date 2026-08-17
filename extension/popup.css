@@ -611,7 +611,8 @@ body {
   display: none;
   flex-direction: column;
   flex-grow: 1;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .tab-content.active { display: flex; }
 
