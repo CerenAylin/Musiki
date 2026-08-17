@@ -27,18 +27,55 @@
   }
 
   /**
+   * Sayfadaki <video> elementini bul (fallback için).
+   */
+  function findVideo() {
+    return document.querySelector('video.html5-main-video') || document.querySelector('video');
+  }
+
+  /**
    * Player durumunu content script'e bildir.
    */
   function sendState() {
-    if (!player) return;
+    // Player veya video elementinden durumu al
+    const vid = findVideo();
 
-    try {
-      const currentTime = player.getCurrentTime();
-      const state = player.getPlayerState();
-      const duration = player.getDuration();
+    if (player) {
+      try {
+        const currentTime = player.getCurrentTime();
+        const state = player.getPlayerState();
+        const duration = player.getDuration();
 
-      // Sadece değişiklik olduğunda veya playing durumunda gönder
-      // (playing durumunda her frame gönderilmeli)
+        const stateChanged = state !== lastState;
+        const timeJumped = Math.abs(currentTime - lastTime) > 0.3;
+
+        if (stateChanged || timeJumped || state === 1) {
+          window.postMessage({
+            type: 'MUSIKI_YT_STATE',
+            payload: {
+              currentTime,
+              state,
+              duration,
+              volume: player.getVolume(),
+              isMuted: player.isMuted()
+            }
+          }, '*');
+        }
+
+        lastState = state;
+        lastTime = currentTime;
+        return;
+      } catch (e) {
+        // Player hatası — video fallback'e düş
+      }
+    }
+
+    // Fallback: <video> elementinden durum al
+    if (vid) {
+      const currentTime = vid.currentTime || 0;
+      const duration = vid.duration || 0;
+      const state = vid.paused ? 2 : (vid.ended ? 0 : 1);
+
       const stateChanged = state !== lastState;
       const timeJumped = Math.abs(currentTime - lastTime) > 0.3;
 
@@ -47,18 +84,16 @@
           type: 'MUSIKI_YT_STATE',
           payload: {
             currentTime,
-            state,       // -1:unstarted, 0:ended, 1:playing, 2:paused, 3:buffering, 5:cued
+            state,
             duration,
-            volume: player.getVolume(),
-            isMuted: player.isMuted()
+            volume: Math.round(vid.volume * 100),
+            isMuted: vid.muted
           }
         }, '*');
       }
 
       lastState = state;
       lastTime = currentTime;
-    } catch (e) {
-      // Player henüz hazır olmayabilir
     }
   }
 
@@ -68,19 +103,75 @@
   function init() {
     player = findPlayer();
     if (!player) {
-      // Henüz yüklenmemiş, tekrar dene
       setTimeout(init, 500);
       return;
     }
 
     console.log('[Musiki] 🎬 YouTube player bulundu');
 
-    // Düzenli polling başlat
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(sendState, POLL_INTERVAL);
 
-    // İlk durumu hemen gönder
     sendState();
+  }
+
+  /**
+   * Video oynatma — birden fazla yöntem dene
+   */
+  function doPlay() {
+    console.log('[Musiki] ▶ Play komutu alındı');
+    
+    // Yöntem 1: Doğrudan <video> elementi (en güvenilir)
+    const vid = findVideo();
+    if (vid && vid.paused) {
+      vid.play().catch(() => {});
+    }
+
+    // Yöntem 2: YouTube Player API
+    if (player && typeof player.playVideo === 'function') {
+      try {
+        player.playVideo();
+      } catch (e) {}
+    }
+
+    // Yöntem 3: YouTube play butonu simülasyonu
+    const playBtn = document.querySelector('.ytp-play-button');
+    if (playBtn) {
+      const ariaLabel = playBtn.getAttribute('aria-label') || '';
+      // Sadece "Oynat" veya "Play" durumunda tıkla
+      if (ariaLabel.toLowerCase().includes('oynat') || ariaLabel.toLowerCase().includes('play')) {
+        playBtn.click();
+      }
+    }
+  }
+
+  /**
+   * Video duraklatma — birden fazla yöntem dene
+   */
+  function doPause() {
+    console.log('[Musiki] ⏸ Pause komutu alındı');
+
+    // Yöntem 1: Doğrudan <video> elementi
+    const vid = findVideo();
+    if (vid && !vid.paused) {
+      vid.pause();
+    }
+
+    // Yöntem 2: YouTube Player API
+    if (player && typeof player.pauseVideo === 'function') {
+      try {
+        player.pauseVideo();
+      } catch (e) {}
+    }
+
+    // Yöntem 3: YouTube pause butonu simülasyonu
+    const playBtn = document.querySelector('.ytp-play-button');
+    if (playBtn) {
+      const ariaLabel = playBtn.getAttribute('aria-label') || '';
+      if (ariaLabel.toLowerCase().includes('duraklat') || ariaLabel.toLowerCase().includes('pause')) {
+        playBtn.click();
+      }
+    }
   }
 
   /**
@@ -92,43 +183,54 @@
 
     // Player'ı lazily bul
     if (!player) player = findPlayer();
-    if (!player) return;
 
     const { action, value } = event.data;
 
     switch (action) {
       case 'mute':
-        player.mute();
+        if (player && typeof player.mute === 'function') {
+          player.mute();
+        } else {
+          const vid = findVideo();
+          if (vid) vid.muted = true;
+        }
         console.log('[Musiki] 🔇 YouTube sesi kapatıldı');
         break;
 
       case 'unmute':
-        player.unMute();
+        if (player && typeof player.unMute === 'function') {
+          player.unMute();
+        } else {
+          const vid = findVideo();
+          if (vid) vid.muted = false;
+        }
         console.log('[Musiki] 🔊 YouTube sesi açıldı');
         break;
 
       case 'setVolume':
-        player.setVolume(value);
+        if (player && typeof player.setVolume === 'function') {
+          player.setVolume(value);
+        } else {
+          const vid = findVideo();
+          if (vid) vid.volume = value / 100;
+        }
         break;
 
       case 'seek':
-        player.seekTo(value, true);
+        if (player && typeof player.seekTo === 'function') {
+          player.seekTo(value, true);
+        } else {
+          const vid = findVideo();
+          if (vid) vid.currentTime = value;
+        }
         break;
 
       case 'play':
-        if (player.getPlayerState() !== 1) {
-          const playBtn = document.querySelector('.ytp-play-button');
-          if (playBtn) playBtn.click();
-          else player.playVideo();
-        }
+        doPlay();
         break;
 
       case 'pause':
-        if (player.getPlayerState() === 1) {
-          const pauseBtn = document.querySelector('.ytp-play-button');
-          if (pauseBtn) pauseBtn.click();
-          else player.pauseVideo();
-        }
+        doPause();
         break;
 
       case 'getState':

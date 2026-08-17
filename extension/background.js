@@ -146,8 +146,12 @@ function onSeparationComplete(tabId, data) {
     action: 'loadStems',
     stems: data.stems,
     title: data.title
-  }).catch(err => {
-    console.error('[Musiki BG] Content script\'e mesaj gönderilemedi:', err);
+  }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.error('[Musiki BG] Content script\'e mesaj gönderilemedi:', chrome.runtime.lastError.message);
+    } else {
+      // optional: handle successful response if needed
+    }
   });
 
   broadcastStatus(tabId);
@@ -168,11 +172,16 @@ async function checkBackendHealth() {
 
 function broadcastStatus(tabId) {
   // Popup'a durum güncellemesi gönder (açıksa)
-  chrome.runtime.sendMessage({
-    action: 'statusUpdate',
-    tabId,
-    ...tabState[tabId]
-  }).catch(() => {
+  try {
+    chrome.runtime.sendMessage({
+      action: 'statusUpdate',
+      tabId,
+      ...tabState[tabId]
+    }, () => {
+      // Popup kapalı olabilir, chrome.runtime.lastError'u sessizce yut
+      if (chrome.runtime.lastError) { /* OK */ }
+    });
+  } catch (e) {
     // Popup kapalı olabilir, sorun değil
-  });
+  }
 }

@@ -25,7 +25,6 @@
   let popupPort = null;
   let vizInterval = null;
 
-  // YouTube player durumu (inject.js'ten gelir)
   let ytState = {
     currentTime: 0,
     state: -1,      // -1:unstarted, 0:ended, 1:playing, 2:paused, 3:buffering
@@ -33,11 +32,15 @@
     volume: 100,
     isMuted: false
   };
+  let lastYtTimeUpdate = performance.now();
 
   // Kanal kontrolleri
   let volumes = { vocals: 1.0, drums: 1.0, bass: 1.0, other: 1.0 };
   let muted = { vocals: false, drums: false, bass: false, other: false };
   let soloChannel = null;
+
+  // Master volume (YouTube orijinal ses seviyesi)
+  let masterVolume = 100;
 
   // Video ID takibi (SPA navigasyon desteği)
   let currentVideoId = getVideoId();
@@ -61,6 +64,28 @@
     if (!event.data || event.data.type !== 'MUSIKI_YT_STATE') return;
 
     ytState = event.data.payload;
+    lastYtTimeUpdate = performance.now();
+
+    // Popup'a her zaman güncelle (stems yüklenmemişken de)
+    if (popupPort) {
+      try {
+        popupPort.postMessage({
+          action: 'stateSync',
+          isLoaded,
+          volumes,
+          muted,
+          soloChannel,
+          videoId: currentVideoId,
+          playerState: {
+            currentTime: ytState.currentTime,
+            duration: ytState.duration,
+            state: ytState.state
+          }
+        });
+      } catch(e) {
+        popupPort = null;
+      }
+    }
   });
 
   // ─── Audio Management ──────────────────────────────────────────
@@ -141,17 +166,25 @@
         return;
       }
 
-      const ytTime = ytState.currentTime;
+      if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume().catch(()=> { });
+      }
+
       const ytPlaying = ytState.state === 1;
+      let estimatedYtTime = ytState.currentTime;
+      if (ytPlaying) {
+        estimatedYtTime += (performance.now() - lastYtTimeUpdate) / 1000;
+      }
 
       STEM_NAMES.forEach(name => {
         const audio = audioElements[name];
         if (!audio) return;
 
         // Zaman senkronizasyonu — drift büyükse düzelt
-        const drift = Math.abs(audio.currentTime - ytTime);
-        if (drift > SYNC_THRESHOLD) {
-          audio.currentTime = ytTime;
+        const threshold = ytPlaying ? 0.3 : 0.1;
+        const drift = Math.abs(audio.currentTime - estimatedYtTime);
+        if (drift > threshold) {
+          audio.currentTime = estimatedYtTime;
         }
 
         // Play/Pause senkronizasyonu
@@ -240,6 +273,10 @@
     const gain = gainNodes[name];
     if (!gain) return;
 
+    if (audioContext && audioContext.state === 'suspended') {
+      audioContext.resume().catch(()=> { });
+    }
+
     let effectiveVolume = volumes[name];
 
     // Mute kontrolü
@@ -317,6 +354,12 @@
         case 'seek':
           const time = ytState.duration * msg.percent;
           window.postMessage({ type: 'MUSIKI_COMMAND', action: 'seek', value: time }, '*');
+          // Stem'leri de aynı zamana ayarla
+          STEM_NAMES.forEach(name => {
+            if (audioElements[name]) {
+              audioElements[name].currentTime = time;
+            }
+          });
           break;
 
         case 'play':
@@ -328,10 +371,24 @@
           break;
 
         case 'setMasterVolume':
-          window.postMessage({ type: 'MUSIKI_COMMAND', action: 'setVolume', value: msg.value }, '*');
+          masterVolume = msg.value;
+          // Tüm stem'lerin sesini oranla ayarla
+          STEM_NAMES.forEach(name => {
+            const gain = gainNodes[name];
+            if (!gain || !audioContext) return;
+
+            let effectiveVolume = volumes[name] * (masterVolume / 100);
+            if (muted[name]) effectiveVolume = 0;
+            if (soloChannel && soloChannel !== name) effectiveVolume = 0;
+
+            gain.gain.setTargetAtTime(effectiveVolume, audioContext.currentTime, 0.02);
+          });
           break;
 
         case 'getState':
+          // Inject.js'ten de en son durumu iste
+          window.postMessage({ type: 'MUSIKI_COMMAND', action: 'getState' }, '*');
+          // Mevcut bilinen durumu hemen gönder
           port.postMessage({
             action: 'stateSync',
             isLoaded,

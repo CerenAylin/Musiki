@@ -129,30 +129,42 @@
     } catch (e) {
       console.warn('Content script\'e bağlanılamadı:', e);
     }
+    // Immediately ask for the current player state so play/pause works
+    // Birden fazla kez dene (content script hazır olmayabilir)
+    const askState = (attempts) => {
+      if (contentPort && attempts > 0) {
+        contentPort.postMessage({ action: 'getState' });
+        setTimeout(() => askState(attempts - 1), 500);
+      }
+    };
+    setTimeout(() => askState(3), 100);
   }
 
   function handleContentMessage(msg) {
     switch (msg.action) {
       case 'stateSync':
-        // Content script'ten mevcut durum
-        stemsReady = msg.isLoaded;
-        if (msg.isLoaded) {
-          onStemsReady();
-          volumes = {};
-          muted = msg.muted || {};
-          soloChannel = msg.soloChannel || null;
-
-          // Volume slider'ları güncelle
+        // Volume/mute/solo UI senkronizasyonu
+        if (msg.volumes) {
           STEM_NAMES.forEach(name => {
-            const val = msg.volumes ? Math.round(msg.volumes[name] * 100) : 100;
+            const val = Math.round(msg.volumes[name] * 100) || 100;
             volumes[name] = val;
             updateSliderUI(name, val);
-            updateMuteUI(name, muted[name]);
           });
+        }
+        if (msg.muted) {
+          muted = msg.muted;
+          Object.keys(muted).forEach(name => updateMuteUI(name, muted[name]));
+        }
+        if (msg.soloChannel !== undefined) {
+          soloChannel = msg.soloChannel;
           updateSoloUI();
         }
         if (msg.playerState) {
           updatePlayerBar(msg.playerState);
+        }
+        // Content script'te stems yüklüyse, popup'ta da hazır göster
+        if (msg.isLoaded && !stemsReady) {
+          onStemsReady();
         }
         break;
 
@@ -219,11 +231,14 @@
       const data = await response.json();
       if (data.status === 'cached' || data.status === 'completed') {
         if (data.title) titleText.textContent = data.title;
+        // Eğer content.js'den gelen stateSync ile zaten stemsReady=true olduysa, bozma
+        if (stemsReady) return;
+
         // Content script'te yüklü mü kontrol et
         chrome.tabs.sendMessage(currentTabId, { action: 'isLoaded' }, (resp) => {
           if (resp && resp.loaded && resp.videoId === currentVideoId) {
             onStemsReady();
-          } else {
+          } else if (!stemsReady) {
             setStatus('Önbellekte mevcut — Yeniden yükle', 'cached');
             btnText.textContent = 'Yükle';
           }
@@ -274,17 +289,20 @@
 
     // Oynatma Çubuğu Seek
     progressTrack.addEventListener('click', (e) => {
-      if (!stemsReady || !contentPort) return;
+      if (!contentPort) return;
       const rect = progressTrack.getBoundingClientRect();
       const percent = (e.clientX - rect.left) / rect.width;
       contentPort.postMessage({ action: 'seek', percent });
     });
 
-    // Playback Controls
+    // Playback Controls — currentPlayerState kontrolünü kaldır
+    // Böylece popup açıldığında hemen play/pause çalışır
     if (playPauseBtn) {
       playPauseBtn.addEventListener('click', () => {
-        if (!contentPort || !currentPlayerState) return;
-        if (currentPlayerState.state === 1) { // 1 = playing
+        if (!contentPort) return;
+        // currentPlayerState henüz gelmemiş olabilir, yine de komutu gönder
+        const isPlaying = currentPlayerState && currentPlayerState.state === 1;
+        if (isPlaying) {
           contentPort.postMessage({ action: 'pause' });
         } else {
           contentPort.postMessage({ action: 'play' });
@@ -293,16 +311,20 @@
     }
     if (skipBackBtn) {
       skipBackBtn.addEventListener('click', () => {
-        if (!contentPort || !currentPlayerState) return;
-        const newTime = Math.max(0, currentPlayerState.currentTime - 10);
-        contentPort.postMessage({ action: 'seek', percent: newTime / currentPlayerState.duration });
+        if (!contentPort) return;
+        const ct = currentPlayerState ? currentPlayerState.currentTime : 0;
+        const dur = currentPlayerState ? currentPlayerState.duration : 1;
+        const newTime = Math.max(0, ct - 10);
+        contentPort.postMessage({ action: 'seek', percent: newTime / dur });
       });
     }
     if (skipFwdBtn) {
       skipFwdBtn.addEventListener('click', () => {
-        if (!contentPort || !currentPlayerState) return;
-        const newTime = Math.min(currentPlayerState.duration, currentPlayerState.currentTime + 10);
-        contentPort.postMessage({ action: 'seek', percent: newTime / currentPlayerState.duration });
+        if (!contentPort) return;
+        const ct = currentPlayerState ? currentPlayerState.currentTime : 0;
+        const dur = currentPlayerState ? currentPlayerState.duration : 1;
+        const newTime = Math.min(dur, ct + 10);
+        contentPort.postMessage({ action: 'seek', percent: newTime / dur });
       });
     }
     if (masterVolumeSlider) {
